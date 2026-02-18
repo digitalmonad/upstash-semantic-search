@@ -16,7 +16,7 @@ const SearchBar = () => {
 
   const search = () => {
     startTransition(() => {
-      router.push(`/search?query=${query}`);
+      router.push(`/?query=${encodeURIComponent(query)}`);
     });
   };
 
@@ -24,22 +24,19 @@ const SearchBar = () => {
     <div className="relative w-full h-10 flex flex-col">
       <div className="relative h-full z-10">
         <Input
+          placeholder={
+            'Search for terms like "sunny", "two-bedroom" or "balcony"'
+          }
           disabled={isSearching}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              search();
-            }
-
-            if (e.key === "Escape") {
-              inputRef?.current?.blur();
-            }
+            if (e.key === "Enter") search();
+            if (e.key === "Escape") inputRef?.current?.blur();
           }}
           ref={inputRef}
           className="absolute inset-0 h-full rounded-lg"
         />
-
         <Button
           disabled={isSearching}
           size="sm"
