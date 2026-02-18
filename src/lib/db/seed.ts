@@ -1,5 +1,6 @@
 import { faker } from "@faker-js/faker";
 import { neon } from "@neondatabase/serverless";
+import { Index } from "@upstash/vector";
 
 import * as dotenv from "dotenv";
 import { drizzle } from "drizzle-orm/neon-http";
@@ -7,6 +8,8 @@ import { drizzle } from "drizzle-orm/neon-http";
 import { apartmentTable } from "./schema";
 
 dotenv.config();
+
+const index = Index.fromEnv();
 
 async function main() {
   const connector = neon(process.env.DATABASE_URL!);
@@ -100,8 +103,22 @@ async function main() {
     });
   });
 
+  index.reset();
+
   apartments.forEach(async (a) => {
     await db.insert(apartmentTable).values(a).onConflictDoNothing();
+
+    await index.upsert({
+      id: a.id!,
+      data: `${a.name}: ${a.description}`,
+      metadata: {
+        id: a.id,
+        name: a.name,
+        description: a.description,
+        price: a.price,
+        imageId: a.imageId,
+      },
+    });
   });
 }
 

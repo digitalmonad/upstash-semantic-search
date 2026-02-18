@@ -9,69 +9,47 @@ import {
   PaginationPrevious,
   PaginationNext,
 } from "@/components/ui/pagination";
-import { db } from "@/lib/db";
-import { Apartment, apartmentTable } from "@/lib/db/schema";
-import { sql } from "drizzle-orm";
+import { Index } from "@upstash/vector";
+import { SemanticSearchToggle } from "@/components/semantic-search-toggle";
+import {
+  PAGE_SIZE,
+  parseParams,
+  fetchFromDb,
+  fetchSemanticFallback,
+  buildHref,
+} from "@/lib/search";
+
+// Singleton index – created once per module, not per request.
+const index = Index.fromEnv();
 
 interface PageProps {
-  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }
 
 export default async function Home({ searchParams }: PageProps) {
-  const params = await searchParams;
-  const queryParam = params.query;
-  const pageParam = params.page;
+  // ── 1. Parse & validate params ──────────────────────────────────────────
+  const { q, page, semanticSearch } = parseParams(await searchParams);
 
-  const q =
-    typeof queryParam === "string" && queryParam.trim()
-      ? queryParam.trim()
-      : null;
-  const pageNum =
-    typeof pageParam === "string" && /^\d+$/.test(pageParam)
-      ? parseInt(pageParam, 10)
-      : 1;
-  const pageSize = 3;
-  const fetchLimit = pageSize + 1; // fetch one extra to detect next page
-  const offset = (pageNum - 1) * pageSize;
+  // ── 2. Fetch from DB (full-text search or all rows) ──────────────────────
+  const { rows, dbTotal } = await fetchFromDb(q, page);
 
-  const baseQuery = db
-    .select({
-      id: apartmentTable.id,
-      name: apartmentTable.name,
-      description: apartmentTable.description,
-      price: apartmentTable.price,
-      imageId: apartmentTable.imageId,
-      total: sql<number>`count(*) OVER()`,
-    })
-    .from(apartmentTable)
-    .$dynamic(); // allows
+  // ── 3. Optional semantic fallback ────────────────────────────────────────
+  // Only runs when: (a) semantic search is toggled on, (b) query is non-empty,
+  // and (c) the DB returned fewer results than a full page.
+  const semanticExtras =
+    semanticSearch && q && rows.length < PAGE_SIZE
+      ? await fetchSemanticFallback(index, q, new Set(rows.map((r) => r.id)))
+      : [];
 
-  const resultsRaw = await (
-    q
-      ? baseQuery.where(
-          sql`to_tsvector('simple', lower(${apartmentTable.name} || ' ' || ${apartmentTable.description})) @@ to_tsquery('simple', lower(${q.split(" ").join(" & ")}))`,
-        )
-      : baseQuery
-  )
-    .limit(fetchLimit)
-    .offset(offset);
+  // ── 4. Merge, paginate, compute totals ───────────────────────────────────
+  const combined = [...rows, ...semanticExtras];
+  const hasNext = combined.length > PAGE_SIZE;
+  const items = combined.slice(0, PAGE_SIZE);
+  // dbTotal is from the window function and reflects all pages; add any
+  // semantic extras that appeared on this page only.
+  const total = dbTotal + semanticExtras.length;
 
-  const total = resultsRaw.length > 0 ? Number(resultsRaw[0].total) : 0;
-
-  const hasNext = resultsRaw.length > pageSize;
-  const results: Array<Apartment & { total: number }> = resultsRaw.slice(
-    0,
-    pageSize,
-  );
-
-  const buildHref = (p: number) => {
-    const params = new URLSearchParams();
-    if (q) params.set("query", q);
-    if (p > 1) params.set("page", String(p));
-    const qs = params.toString();
-    return qs ? `/?${qs}` : `/`;
-  };
-
+  // ── 5. Render ─────────────────────────────────────────────────────────────
   return (
     <div className="mx-auto max-w-7xl lg:flex gap-16">
       <div className="h-full w-full">
@@ -80,6 +58,7 @@ export default async function Home({ searchParams }: PageProps) {
             <h1 className="tracking-tight text-2xl sm:text-4xl font-bold">
               Semantic search
             </h1>
+            <SemanticSearchToggle enabled={semanticSearch} />
             <a
               href="https://en.wikipedia.org/wiki/Semantic_search"
               target="_blank"
@@ -100,37 +79,41 @@ export default async function Home({ searchParams }: PageProps) {
           </Card>
 
           <div className="flex flex-col gap-4">
-            {results.length === 0 ? (
+            {items.length === 0 ? (
               <div className="w-full py-8 flex items-center justify-center">
                 <p className="text-muted-foreground">
                   No items found. Try different keywords or clear the search.
                 </p>
               </div>
             ) : (
-              results.map((result) => (
-                <Card key={result.id} className="py-0">
+              items.map((item) => (
+                <Card key={item.id} className="py-0">
                   <CardContent className="p-0">
                     <div className="flex">
-                      <div className="w-1/3 relative h-40 flex-shrink-0 overflow-hidden bg-muted rounded-l-xl ">
-                        <Image
-                          src={result.imageId}
-                          alt={result.name}
-                          fill
-                          className="object-cover"
-                        />
+                      <div className="w-1/3 relative h-40 flex-shrink-0 overflow-hidden bg-muted rounded-l-xl">
+                        {item.imageId && (
+                          <Image
+                            src={item.imageId}
+                            alt={item.name}
+                            fill
+                            className="object-cover"
+                          />
+                        )}
                       </div>
 
                       <div className="flex-1 p-4">
-                        <h2 className="font-semibold text-lg">{result.name}</h2>
+                        <h2 className="font-semibold text-lg">{item.name}</h2>
                         <div className="text-sm text-muted-foreground mt-1">
                           {new Intl.NumberFormat("en-US", {
                             style: "currency",
                             currency: "USD",
-                          }).format(Number(result.price))}
+                          }).format(Number(item.price))}
                         </div>
-                        <p className="text-sm text-muted-foreground mt-2">
-                          {result.description}
-                        </p>
+                        {item.description && (
+                          <p className="text-sm text-muted-foreground mt-2">
+                            {item.description}
+                          </p>
+                        )}
                       </div>
                     </div>
                   </CardContent>
@@ -138,33 +121,35 @@ export default async function Home({ searchParams }: PageProps) {
               ))
             )}
 
-            <div className="flex justify-between">
-              <p className="text-sm text-muted-foreground text-left">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
                 {q
-                  ? `Total ${total} item${total !== 1 ? "s" : ""} for "${q}"`
-                  : `Total ${total} item${total !== 1 ? "s" : ""}`}
+                  ? `${total} result${total !== 1 ? "s" : ""} for "${q}"`
+                  : `${total} listing${total !== 1 ? "s" : ""}`}
               </p>
-              <div>
-                <Pagination>
-                  <PaginationPrevious
-                    href={pageNum > 1 ? buildHref(pageNum - 1) : "#"}
-                    aria-disabled={pageNum <= 1}
-                  />
 
-                  <PaginationContent>
-                    <PaginationItem>
-                      <PaginationLink href={buildHref(pageNum)} isActive>
-                        {pageNum}
-                      </PaginationLink>
-                    </PaginationItem>
-                  </PaginationContent>
+              <Pagination className="mx-0 w-auto">
+                <PaginationPrevious
+                  href={page > 1 ? buildHref(page - 1, q, semanticSearch) : "#"}
+                  aria-disabled={page <= 1}
+                />
 
-                  <PaginationNext
-                    href={hasNext ? buildHref(pageNum + 1) : "#"}
-                    aria-disabled={!hasNext}
-                  />
-                </Pagination>
-              </div>
+                <PaginationContent>
+                  <PaginationItem>
+                    <PaginationLink
+                      href={buildHref(page, q, semanticSearch)}
+                      isActive
+                    >
+                      {page}
+                    </PaginationLink>
+                  </PaginationItem>
+                </PaginationContent>
+
+                <PaginationNext
+                  href={hasNext ? buildHref(page + 1, q, semanticSearch) : "#"}
+                  aria-disabled={!hasNext}
+                />
+              </Pagination>
             </div>
           </div>
         </div>

@@ -16,7 +16,15 @@ const SearchBar = () => {
 
   const search = () => {
     startTransition(() => {
-      router.push(`/?query=${encodeURIComponent(query)}`);
+      const params = new URLSearchParams(searchParams.toString());
+      if (query.trim()) {
+        params.set("query", query.trim());
+      } else {
+        params.delete("query");
+      }
+      // Reset to page 1 on new search
+      params.delete("page");
+      router.push(`/?${params.toString()}`);
     });
   };
 
@@ -24,9 +32,7 @@ const SearchBar = () => {
     <div className="relative w-full h-10 flex flex-col">
       <div className="relative h-full z-10">
         <Input
-          placeholder={
-            'Search for terms like "sunny", "two-bedroom" or "balcony"'
-          }
+          placeholder={'Search for terms like "beach", "travel" or "factory"'}
           disabled={isSearching}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
