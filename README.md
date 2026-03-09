@@ -1,4 +1,22 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Upstash Semantic Search
+
+Demo application combining full-text search with vector semantic search over a PostgreSQL database. This app was created mainly as a tool to investigate possibilities of [Upstash Vector](https://upstash.com/docs/vector) and how to add it as a layer on top of SQL database in an existing project.
+
+<img src="app.png">
+
+**Stack:** Next.js 16 · Drizzle ORM · Neon Postgres · Upstash Vector · nuqs
+
+**Tested on:** Neon Postgres, Upstash Vector
+
+**How it works:**
+
+- Basic search uses PostgreSQL `to_tsvector` / `to_tsquery`.
+- If full-text returns fewer results than the page size, the semantic fallback (toggle OFF/ON) fills remaining slots using vector embeddings from Upstash Vector.
+
+Values for environmental variables can be found in service dashboards. To get them create account in particular service ([NeonDB](https://neon.com/) and [Upstash](https://upstash.com/)).
+
+**IMPORTANT**
+Before use, it is mandatory to create "Index" in Upstash Vector. Follow this "get started": [https://upstash.com/docs/vector/overall/getstarted](https://upstash.com/docs/vector/overall/getstarted)
 
 ## Getting Started
 
