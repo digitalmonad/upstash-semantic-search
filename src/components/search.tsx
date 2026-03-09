@@ -4,27 +4,20 @@ import { Loader2, Search } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { useRef, useState, useTransition } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useQueryStates, parseAsString, parseAsInteger } from "nuqs";
 
 const SearchBar = () => {
-  const searchParams = useSearchParams();
-  const defaultQuery = searchParams.get("query") || "";
+  const [{ query }, setParams] = useQueryStates({
+    query: parseAsString.withDefault(""),
+    page: parseAsInteger.withDefault(1),
+  });
   const inputRef = useRef<HTMLInputElement>(null);
   const [isSearching, startTransition] = useTransition();
-  const router = useRouter();
-  const [query, setQuery] = useState<string>(defaultQuery);
+  const [inputValue, setInputValue] = useState<string>(query);
 
   const search = () => {
     startTransition(() => {
-      const params = new URLSearchParams(searchParams.toString());
-      if (query.trim()) {
-        params.set("query", query.trim());
-      } else {
-        params.delete("query");
-      }
-      // Reset to page 1 on new search
-      params.delete("page");
-      router.push(`/?${params.toString()}`);
+      setParams({ query: inputValue.trim(), page: 1 }, { shallow: false });
     });
   };
 
@@ -32,10 +25,12 @@ const SearchBar = () => {
     <div className="relative w-full h-10 flex flex-col">
       <div className="relative h-full z-10">
         <Input
-          placeholder={'Search for terms like "beach", "travel" or "factory"'}
+          placeholder={
+            'Search for terms like "beach", "travel", "king" or "factory"'
+          }
           disabled={isSearching}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") search();
             if (e.key === "Escape") inputRef?.current?.blur();

@@ -10,12 +10,30 @@ import { Index } from "@upstash/vector";
 import { db } from "@/lib/db";
 import { Apartment, apartmentTable } from "@/lib/db/schema";
 import { sql } from "drizzle-orm";
+import {
+  createSearchParamsCache,
+  parseAsBoolean,
+  parseAsInteger,
+  parseAsString,
+} from "nuqs/server";
 
 // ─────────────────────────────────────────────────────────────
 // Constants
 // ─────────────────────────────────────────────────────────────
 
 export const PAGE_SIZE = 3;
+
+// ─────────────────────────────────────────────────────────────
+// URL param definitions (nuqs)
+// ─────────────────────────────────────────────────────────────
+
+export const searchParamsParsers = {
+  query: parseAsString.withDefault(""),
+  page: parseAsInteger.withDefault(1),
+  semanticSearch: parseAsBoolean.withDefault(false),
+};
+
+export const searchParamsCache = createSearchParamsCache(searchParamsParsers);
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -53,10 +71,7 @@ export interface SearchResult {
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Safely extract and validate params from raw Next.js `searchParams`.
- *
- * Works with both synchronous `Record<…>` and the `await`-ed value from
- * `Promise<Record<…>>` – just `await searchParams` before calling this.
+ * Extract and validate params using nuqs searchParamsCache.
  *
  * SQL-injection note: `q` is used only as a parameterised value inside
  * drizzle's `sql` template – it is never interpolated as raw SQL text, so
@@ -65,24 +80,9 @@ export interface SearchResult {
 export function parseParams(
   raw: Record<string, string | string[] | undefined>,
 ): ParsedParams {
-  // query – pick only the first value if it arrives as an array
-  const rawQ =
-    typeof raw.query === "string"
-      ? raw.query.trim()
-      : Array.isArray(raw.query)
-        ? (raw.query[0] ?? "").trim()
-        : "";
-  const q = rawQ.length > 0 ? rawQ : null;
-
-  // page – must be a positive integer
-  const rawPage = typeof raw.page === "string" ? raw.page : "";
-  const parsedPage = /^\d+$/.test(rawPage) ? parseInt(rawPage, 10) : 1;
-  const page = parsedPage >= 1 ? parsedPage : 1;
-
-  // semanticSearch toggle
-  const semanticSearch = raw.semanticSearch === "1";
-
-  return { q, page, semanticSearch };
+  const { query, page, semanticSearch } = searchParamsCache.parse(raw);
+  const q = query.trim().length > 0 ? query.trim() : null;
+  return { q, page: Math.max(1, page), semanticSearch };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -215,7 +215,7 @@ export function buildHref(
 ): string {
   const params = new URLSearchParams();
   if (q) params.set("query", q);
-  if (semanticSearch) params.set("semanticSearch", "1");
+  if (semanticSearch) params.set("semanticSearch", "true");
   if (p > 1) params.set("page", String(p));
   const qs = params.toString();
   return qs ? `/?${qs}` : `/`;

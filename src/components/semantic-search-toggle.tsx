@@ -1,29 +1,19 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
 import { Switch } from "@/components/ui/switch";
 import { useTransition } from "react";
+import { useQueryStates, parseAsBoolean, parseAsInteger } from "nuqs";
 
-interface SemanticSearchToggleProps {
-  enabled: boolean;
-}
-
-export function SemanticSearchToggle({ enabled }: SemanticSearchToggleProps) {
-  const router = useRouter();
-  const searchParams = useSearchParams();
+export function SemanticSearchToggle() {
+  const [{ semanticSearch }, setParams] = useQueryStates({
+    semanticSearch: parseAsBoolean.withDefault(false),
+    page: parseAsInteger.withDefault(1),
+  });
   const [, startTransition] = useTransition();
 
   const handleToggle = (checked: boolean) => {
-    const params = new URLSearchParams(searchParams.toString());
-    if (checked) {
-      params.set("semanticSearch", "1");
-    } else {
-      params.delete("semanticSearch");
-    }
-    // Reset to page 1 on toggle
-    params.delete("page");
     startTransition(() => {
-      router.push(`/?${params.toString()}`);
+      setParams({ semanticSearch: checked, page: 1 }, { shallow: false });
     });
   };
 
@@ -31,14 +21,14 @@ export function SemanticSearchToggle({ enabled }: SemanticSearchToggleProps) {
     <div className="flex items-center gap-2">
       <Switch
         id="semantic-search-toggle"
-        checked={enabled}
+        checked={semanticSearch}
         onCheckedChange={handleToggle}
       />
       <label
         htmlFor="semantic-search-toggle"
         className="text-sm font-medium cursor-pointer select-none"
       >
-        ON/OFF
+        OFF/ON
       </label>
     </div>
   );

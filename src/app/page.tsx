@@ -58,7 +58,7 @@ export default async function Home({ searchParams }: PageProps) {
             <h1 className="tracking-tight text-2xl sm:text-4xl font-bold">
               Semantic search
             </h1>
-            <SemanticSearchToggle enabled={semanticSearch} />
+            <SemanticSearchToggle />
             <a
               href="https://en.wikipedia.org/wiki/Semantic_search"
               target="_blank"
